@@ -48,8 +48,8 @@ class MapConsumer(WebsocketConsumer):
         auth.set_access_token(settings.ACCESS_TOKEN, settings.ACCESS_SECRET)
 
         twitter_stream = Stream(auth, MyListener(self))
-        dx = 1.0
-        dy = 1.0
+        dx = 5.0
+        dy = 5.0
         # [SWlongitude, SWLatitude, NElongitude, NELatitude]
         (SWLo,SWLa,NELo,NELa)= (message[1]-dx, message[0]-dy, message[1]+dx, message[0]+dy)
         twitter_stream.filter(locations=[SWLo,SWLa,NELo,NELa], async=True)

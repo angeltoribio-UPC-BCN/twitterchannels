@@ -26,21 +26,23 @@
     });
     // Initialise an empty map
     var map = L.map('map');
+    var Barcelona = [41.4, 2.2];
+    var Madrid = [40.4, -3.6];
 
-    map.addLayer(mytiles).setView([41.4, 2.2], 8);
+    map.addLayer(mytiles).setView(Madrid, 5);
 
-    var circle = L.circle([41.4, 2.2], {
+    var circle = L.circle(Madrid, {
         color: 'red',
         fillColor: '#f03',
         fillOpacity: 0.2,
-        radius: 100000
+        radius: 500000
     }).addTo(map);
 
     var twittsSocket = new WebSocket('ws://' + window.location.host + '/ws/map/');
 
     twittsSocket.onopen = function (ev) {
         twittsSocket.send(JSON.stringify({
-            'message': [41.4, 2.2],
+            'message': Madrid,
         }))
     };
 
