@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>twitts</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"></script>
+    <script src="http://code.jquery.com/jquery-2.1.0.min.js"></script>
+    <style>
+        #map {
+            height: 600px;
+        }
+    </style>
+
+</head>
+<body>
+<div id="map"></div>
+</body>
+
+<script>
+    // Load the tile images from OpenStreetMap
+    var mytiles = L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+    });
+    // Initialise an empty map
+    var map = L.map('map');
+
+    map.addLayer(mytiles).setView([41.4, 2.2], 8);
+
+    var circle = L.circle([41.4, 2.2], {
+        color: 'red',
+        fillColor: '#f03',
+        fillOpacity: 0.2,
+        radius: 100000
+    }).addTo(map);
+
+    var twittsSocket = new WebSocket('ws://' + window.location.host + '/ws/map/');
+
+    twittsSocket.onopen = function (ev) {
+        twittsSocket.send(JSON.stringify({
+            'message': [41.4, 2.2],
+        }))
+    };
+
+    twittsSocket.onmessage = function (e) {
+        var data = JSON.parse(e.data);
+        if (typeof(data['message']) === 'object') {
+            L.marker([data['message']['c1'], data['message']['c0']]).addTo(map).bindPopup(data['message']['text']);
+        }
+    };
+
+    twittsSocket.onclose = function (e) {
+        console.error('twitts socket closed unexpectedly');
+    };
+
+</script>
+</html>
