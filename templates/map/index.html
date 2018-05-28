@@ -1,61 +1,175 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8"/>
-    <title>twitts</title>
-
+    <title>Twitts map</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"></script>
-    <script src="http://code.jquery.com/jquery-2.1.0.min.js"></script>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.1/dist/leaflet.css"
+          integrity="sha512-Rksm5RenBEKSKFjgI3a41vrjkw4EVPlJ3+OiI65vTjIdo9brlAacEuKOiQ5OFh7cOI1bkDwLqdLw3Zg0cRJAAQ=="
+          crossorigin=""/>
+    <!-- Make sure you put this AFTER Leaflet's CSS -->
+    <script src="https://unpkg.com/leaflet@1.3.1/dist/leaflet.js"
+            integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
+            crossorigin=""></script>
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+            integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+            crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"
+            integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+            crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"
+            integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+            crossorigin="anonymous"></script>
     <style>
         #map {
             height: 600px;
+            width: 800px;
         }
     </style>
-
 </head>
 <body>
-<div id="map"></div>
+<div class="container">
+    <div class="row">
+        <div class="col-sm-4">
+            <div class="row" style="height: 80%;">
+                <div class="col-sm-12">
+                    <h1>
+                        <small class="text-muted">Total:</small>
+                        <span id=" tweets_total"></span></h1>
+                    <h1>
+                        <small class="text-muted">Geolocated:</small>
+                        <span id=" tweets_geolocated"></span></h1>
+
+                    <div class="progress" style="height: 38px;">
+                        <div id="percent" class="progress-bar" role="progressbar" style="width: 0;" aria-valuenow="25"
+                             aria-valuemin="0"
+                             aria-valuemax="100"></div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="row" style="height: 20%;">
+                <div class="col-sm-12">
+                    <button class="btn btn-danger pull-right" id="control-btn"></button>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-8" id="map">
+
+        </div>
+    </div>
+</div>
 </body>
-
 <script>
-    // Load the tile images from OpenStreetMap
-    var mytiles = L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-    });
-    // Initialise an empty map
-    var map = L.map('map');
-    var Barcelona = [41.4, 2.2];
-    var Madrid = [40.4, -3.6];
+    (function ($) {
 
-    map.addLayer(mytiles).setView(Madrid, 5);
+        // Initializations
+        var mytiles = L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+        });
+        var Barcelona = [41.4, 2.2];
+        var  tweets_total = 0;
+        var  tweets_geolocated = 0;
+        var bbox_rectangle;
 
-    var circle = L.circle(Madrid, {
-        color: 'red',
-        fillColor: '#f03',
-        fillOpacity: 0.2,
-        radius: 500000
-    }).addTo(map);
+        // Initialize the interface
+        $('# tweets_geolocated').html( tweets_geolocated.toString());
+        $('# tweets_total').html( tweets_total.toString());
 
-    var twittsSocket = new WebSocket('ws://' + window.location.host + '/ws/map/');
+        $('#percent').html('0%');
 
-    twittsSocket.onopen = function (ev) {
-        twittsSocket.send(JSON.stringify({
-            'message': Madrid,
-        }))
-    };
+        // Control button is disabled until the websocket connection is established
+        $('#control-btn').html('Start').attr('value', 'iddle').attr('disabled', 'disabled');
 
-    twittsSocket.onmessage = function (e) {
-        var data = JSON.parse(e.data);
-        if (typeof(data['message']) === 'object') {
-            L.marker([data['message']['c1'], data['message']['c0']]).addTo(map).bindPopup(data['message']['text']);
+        // Initialise an empty map
+        var map = L.map('map').addLayer(mytiles).setView(Barcelona, 6);
+
+        // Open websocket connection to server
+        var  tweetsSocket = new WebSocket('ws://' + window.location.host + '/ws/map/');
+
+         tweetsSocket.addEventListener('open', webSocketOpen);
+         tweetsSocket.addEventListener('message', webSocketMessage);
+         tweetsSocket.addEventListener('close', webSocketClose);
+
+        // Create a set of WebSocket functions to fire on WebSocket events and to reattach when connection closes
+        function webSocketOpen(e) {
+            // Enable control button
+            $('#control-btn').removeAttr('disabled')
         }
-    };
 
-    twittsSocket.onclose = function (e) {
-        console.error('twitts socket closed unexpectedly');
-    };
+        function webSocketMessage(e) {
+            var data = JSON.parse(e.data);
+            if (data['type'] === 'tweet') {
+                if (data['coordinates'] === 'true') {
+                    // Plot a market at received coordinates
+                    L.marker([data['message']['lat'], data['message']['lng']]).addTo(map).bindPopup(data['message']['text']);
 
+                    // Update  tweets statistics
+                     tweets_geolocated++;
+                     tweets_total++;
+                    $('# tweets_geolocated').html( tweets_geolocated.toString());
+                    $('# tweets_total').html( tweets_total.toString());
+                    percent = Math.round(100 *  tweets_geolocated /  tweets_total).toString() + '%';
+                    $('#percent').css('width', percent).html(percent)
+
+                }
+                if (data['coordinates'] === 'false') {
+                     tweets_total++;
+                    $('# tweets_total').html( tweets_total.toString());
+                }
+            } else if (data['type'] === 'control') {
+                if (data['action'] === 'error') {
+                    webSocketClose();
+                }
+            }
+        }
+
+        function webSocketClose(e) {
+            $('#control-btn').attr('disabled', 'disabled').html('Start');
+
+             tweetsSocket = new WebSocket('ws://' + window.location.host + '/ws/map/');
+
+            // It is necessary to reassociate the events after webSocket closing
+             tweetsSocket.addEventListener('open', webSocketOpen);
+             tweetsSocket.addEventListener('message', webSocketMessage);
+             tweetsSocket.addEventListener('close', webSocketClose);
+        }
+
+        // Start listening tweets
+        $("#control-btn").click(function (e) {
+            e.preventDefault();
+            var status = $(this).attr('value');
+            if (status === 'iddle') {
+                // Start listening for tweets
+                $(this).html('Stop').attr('value', 'listening');
+
+                // mark the area where  tweets will be listened for
+                var bbox = map.getBounds();
+                bbox_rectangle = L.rectangle(bbox, {color: 'red', fillColor: '#f03', fillOpacity: 0.2});
+                bbox_rectangle.addTo(map);
+
+                var SW = bbox.getSouthWest();
+                var NE = bbox.getNorthEast();
+
+                // Communicate to server the bounding box to begin listening
+                 tweetsSocket.send(JSON.stringify({
+                    'type': 'listen',
+                    'message': [SW.lng, SW.lat, NE.lng, NE.lat],
+                }))
+            }
+            if (status == 'listening') {
+                // Stop listening
+                $(this).html('Start').attr('value', 'iddle');
+                // Communicate to server to stop listening
+                 tweetsSocket.send(JSON.stringify({
+                    'type': 'stop',
+                    'message': '',
+                }));
+                bbox_rectangle.remove();
+            }
+        });
+    })(jQuery);
 </script>
 </html>

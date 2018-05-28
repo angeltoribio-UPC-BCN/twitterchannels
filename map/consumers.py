@@ -1,12 +1,9 @@
 import json
-
+from django.conf import settings
 from channels.generic.websocket import WebsocketConsumer
 from tweepy import OAuthHandler
 from tweepy import Stream
 from tweepy.streaming import StreamListener
-from django.conf import settings
-
-
 
 class MyListener(StreamListener):
 
@@ -15,41 +12,59 @@ class MyListener(StreamListener):
 
     def on_data(self, data):
         tweet = json.loads(data)
-        if tweet['coordinates']:
+        # Send message to connected browser
+        if 'coordinates' in tweet and tweet['coordinates']:
             self.consumer.send(text_data=json.dumps({
+                'type': 'tweet',
+                'coordinates': 'true',
                 'message': {
-                    'id': tweet['id_str'],
-                    'c0': str(tweet['coordinates']['coordinates'][0]),
-                    'c1': str(tweet['coordinates']['coordinates'][1]),
-                    'text': tweet['text'],
-                    "created_at": tweet['created_at'],
+                    'lng': str(tweet['coordinates']['coordinates'][0]),
+                    'lat': str(tweet['coordinates']['coordinates'][1]),
+                    'text': '<strong>%s</strong>: %s'%(tweet['user']['name'],tweet['text']),
                 }
             }))
+        else:
+            self.consumer.send(text_data=json.dumps({
+                'type': 'tweet',
+                'coordinates': 'false',
+                'message': {
+                    'text': '<strong>%s</strong>: %s'%(tweet['user']['name'],tweet['text']),
+                }
+            }))
+
         return True
 
     def on_error(self, status):
-        # print('status:%d' % status)
+        self.consumer.send(text_data=json.dumps({
+            'type': 'control',
+            'action': 'error',
+            'message': status,
+        }))
         return True
 
 
 class MapConsumer(WebsocketConsumer):
+    twitter_stream = None
+    auth = None
 
     def connect(self):
         self.accept()
+        self.auth = OAuthHandler(settings.CONSUMER_KEY, settings.CONSUMER_SECRET)
+        self.auth.set_access_token(settings.ACCESS_TOKEN, settings.ACCESS_SECRET)
 
     def disconnect(self, close_code):
-        pass
+        if self.twitter_stream is not None:
+            self.twitter_stream.disconnect()
 
     def receive(self, text_data):
         text_data_json = json.loads(text_data)
-        message = text_data_json['message']
+        if text_data_json['type'] == 'listen':
+            message = text_data_json['message']
+            self.twitter_stream = Stream(self.auth, MyListener(self))
 
-        auth = OAuthHandler(settings.CONSUMER_KEY, settings.CONSUMER_SECRET)
-        auth.set_access_token(settings.ACCESS_TOKEN, settings.ACCESS_SECRET)
-
-        twitter_stream = Stream(auth, MyListener(self))
-        dx = 5.0
-        dy = 5.0
-        # [SWlongitude, SWLatitude, NElongitude, NELatitude]
-        (SWLo,SWLa,NELo,NELa)= (message[1]-dx, message[0]-dy, message[1]+dx, message[0]+dy)
-        twitter_stream.filter(locations=[SWLo,SWLa,NELo,NELa], async=True)
+            # Create a new stream and filter by bounding box
+            # A new thread (async) is required not to block this HTTP transaction
+            # [SWlongitude, SWLatitude, NElongitude, NELatitude]
+            self.twitter_stream.filter(locations=message, async=True)
+        elif text_data_json['type'] == 'stop':
+            self.twitter_stream.disconnect()
